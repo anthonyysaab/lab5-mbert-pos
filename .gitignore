@@ -1,0 +1,21 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+.venv/
+.env
+
+# Data / outputs
+data/raw/
+data/processed/
+outputs/
+checkpoints/
+logs/
+
+# HuggingFace / model cache
+.cache/
+wandb/
+runs/
+
+# OS / editor
+.DS_Store
+.vscode/
