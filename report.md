@@ -272,15 +272,15 @@ It also reported unexpected pretraining weights such as `cls.predictions.*` and 
 
 | Training language | Validation accuracy | Validation macro-F1 |
 |---|---:|---:|
-| Arabic PADT | 0.9416 | 0.7891 |
-| English EWT | 0.9237 | 0.7619 |
-| Spanish GSD | 0.9548 | 0.7706 |
-| French GSD | 0.9694 | 0.7918 |
-| Italian ISDT | 0.9675 | 0.7279 |
+| Arabic PADT | 0.8640 | 0.1859 |
+| English EWT | 0.9043 | 0.5016 |
+| Spanish GSD | 0.9512 | 0.7042 |
+| French GSD | 0.9643 | 0.7530 |
+| Italian ISDT | 0.9572 | 0.6978 |
 
-These results show that the model successfully learns POS tagging from each treebank, even with a reduced training setup.
+These results show that the model successfully learns POS tagging from each treebank, even with a reduced training setup of 2,000 training examples and 300 optimization steps per language.
 
-Accuracy is consistently higher than macro-F1 because the POS distribution is imbalanced. Frequent labels such as `NOUN`, `ADP`, `DET`, `PUNCT`, and `VERB` dominate the token counts, while rarer labels and composite labels are harder to learn reliably.
+Accuracy remains high for all five languages, but macro-F1 is much lower, especially for Arabic. This is expected after multiword-token normalization, because the label vocabulary now contains many rare composite labels such as `ADP+DET`, `VERB+PRON`, or longer Arabic clitic combinations. Accuracy is dominated by frequent labels, while macro-F1 gives equal weight to every label, including rare and difficult composite labels.
 
 ---
 
@@ -298,11 +298,11 @@ This setup directly tests whether mBERT’s learned POS representations transfer
 
 | Train \ Test | ar_padt | en_ewt | es_gsd | fr_gsd | it_isdt |
 |---|---:|---:|---:|---:|---:|
-| ar_padt | 0.9428 | 0.5441 | 0.6000 | 0.5962 | 0.6102 |
-| en_ewt | 0.5541 | 0.9257 | 0.8594 | 0.8781 | 0.9082 |
-| es_gsd | 0.6495 | 0.8219 | 0.9498 | 0.9335 | 0.9468 |
-| fr_gsd | 0.6820 | 0.8177 | 0.9148 | 0.9619 | 0.9453 |
-| it_isdt | 0.6668 | 0.8337 | 0.9210 | 0.9387 | 0.9673 |
+| ar_padt | 0.8651 | 0.4786 | 0.5797 | 0.5543 | 0.5580 |
+| en_ewt | 0.4030 | 0.9055 | 0.8317 | 0.8406 | 0.8241 |
+| es_gsd | 0.5279 | 0.8268 | 0.9472 | 0.9281 | 0.9164 |
+| fr_gsd | 0.5291 | 0.8192 | 0.9023 | 0.9566 | 0.9281 |
+| it_isdt | 0.5456 | 0.8424 | 0.9119 | 0.9327 | 0.9611 |
 
 ![Cross-lingual POS tagging accuracy](outputs/transfer_accuracy_heatmap.png)
 
@@ -312,11 +312,11 @@ This setup directly tests whether mBERT’s learned POS representations transfer
 
 | Train \ Test | ar_padt | en_ewt | es_gsd | fr_gsd | it_isdt |
 |---|---:|---:|---:|---:|---:|
-| ar_padt | 0.8220 | 0.3903 | 0.4008 | 0.4266 | 0.4576 |
-| en_ewt | 0.3987 | 0.7579 | 0.6162 | 0.6543 | 0.7161 |
-| es_gsd | 0.4951 | 0.6417 | 0.7639 | 0.7732 | 0.8255 |
-| fr_gsd | 0.4753 | 0.6224 | 0.6589 | 0.7747 | 0.7914 |
-| it_isdt | 0.4600 | 0.6351 | 0.6685 | 0.7464 | 0.8239 |
+| ar_padt | 0.1815 | 0.1449 | 0.2348 | 0.2423 | 0.1841 |
+| en_ewt | 0.0648 | 0.4509 | 0.5386 | 0.6080 | 0.4743 |
+| es_gsd | 0.0908 | 0.3902 | 0.7348 | 0.7838 | 0.6105 |
+| fr_gsd | 0.0713 | 0.3613 | 0.6220 | 0.7814 | 0.5672 |
+| it_isdt | 0.0811 | 0.3902 | 0.6427 | 0.7577 | 0.6067 |
 
 ![Cross-lingual POS tagging macro-F1](outputs/transfer_macro_f1_heatmap.png)
 
@@ -324,15 +324,17 @@ This setup directly tests whether mBERT’s learned POS representations transfer
 
 ## 13. Interpretation of the results
 
-The strongest scores are on the diagonal. This means that training and testing on the same language gives the best performance. This is expected because the model sees the same treebank conventions, vocabulary distribution, morphology, and syntax during training.
+The strongest scores are on the diagonal. This means that training and testing on the same language gives the best performance. This is expected because the model sees the same treebank conventions, vocabulary distribution, morphology, tokenization behavior, and syntax during training.
 
-The Romance languages transfer very well to one another. Spanish, French, and Italian produce high cross-lingual accuracy scores:
+The Romance languages transfer well to one another. Spanish, French, and Italian produce strong cross-lingual accuracy scores:
 
 ```text
-Spanish → French:  0.9335
-Spanish → Italian: 0.9468
-French → Italian:  0.9453
-Italian → French:  0.9387
+Spanish → French:  0.9281
+Spanish → Italian: 0.9164
+French → Spanish:  0.9023
+French → Italian:  0.9281
+Italian → Spanish: 0.9119
+Italian → French:  0.9327
 ```
 
 This supports the idea that mBERT has shared multilingual representations that are especially useful when languages are typologically and genealogically close.
@@ -340,20 +342,22 @@ This supports the idea that mBERT has shared multilingual representations that a
 English transfers reasonably well to the Romance languages:
 
 ```text
-English → Spanish: 0.8594
-English → French:  0.8781
-English → Italian: 0.9082
+English → Spanish: 0.8317
+English → French:  0.8406
+English → Italian: 0.8241
 ```
 
 However, English transfers much less well to Arabic:
 
 ```text
-English → Arabic: 0.5541
+English → Arabic: 0.4030
 ```
 
-Arabic is the weakest cross-lingual target overall. This is probably caused by several factors: different script, richer morphology, different subword segmentation behavior, and greater typological distance from the other selected languages.
+Arabic is the weakest cross-lingual target overall. The highest non-Arabic-to-Arabic accuracy is only around 0.5456, from Italian to Arabic. This is probably caused by several factors: different script, richer morphology, heavier subword segmentation, many composite clitic labels, and greater typological distance from the European languages.
 
-Macro-F1 is lower than accuracy. This is because POS labels are imbalanced. Common tags such as `NOUN`, `ADP`, `DET`, `VERB`, and `PUNCT` dominate accuracy, while rare labels such as `INTJ`, `SYM`, `PART`, `X`, and composite multiword labels affect macro-F1 more strongly.
+Macro-F1 is much lower than accuracy, especially for Arabic and for cross-lingual transfer into Arabic. This does not mean that the model is only guessing. Rather, it shows that many rare labels are not handled well. With multiword-token normalization, the task becomes harder because the model must predict not only ordinary UPOS labels but also composite labels such as `ADP+DET`, `VERB+PRON`, and language-specific clitic combinations. Accuracy rewards correct predictions on frequent labels, while macro-F1 penalizes failure on rare labels.
+
+The clean result is therefore more realistic than the first version of the experiment: it keeps the UD multiword-token information, but this makes the classification problem harder and exposes the limits of cross-lingual transfer more clearly.
 
 ---
 
@@ -361,17 +365,17 @@ Macro-F1 is lower than accuracy. This is because POS labels are imbalanced. Comm
 
 The answer is yes, but with limits.
 
-mBERT is multilingual because a model trained on one language can still perform above a random baseline on other languages. The transfer is especially strong between related languages, such as Spanish, French, and Italian.
+mBERT is multilingual because a model trained on one language can still transfer useful POS information to another language. This is clearest among the Romance languages, where Spanish, French, and Italian transfer strongly to one another. English also transfers moderately well to the Romance languages.
 
-However, mBERT is not equally multilingual for all language pairs. Transfer performance decreases when the target language is more distant in script, morphology, tokenization behavior, and syntactic distribution.
+However, mBERT is not equally multilingual for all language pairs. Transfer performance decreases when the target language differs strongly in script, morphology, tokenization behavior, and label distribution. Arabic is the clearest example: it has much heavier WordPiece segmentation and many more composite labels after multiword-token normalization, and it receives weaker transfer from the European-language models.
 
 The results therefore support a nuanced conclusion:
 
 ```text
-mBERT learns shared multilingual representations, but transfer quality depends strongly on linguistic distance and tokenization compatibility.
+mBERT learns shared multilingual representations, but transfer quality depends strongly on linguistic distance, tokenizer compatibility, and annotation-label compatibility.
 ```
 
-This is also visible in the tokenization analysis. Arabic has much heavier WordPiece segmentation than the European languages, which means the model must map more subword fragments back to UD token-level labels. The Romance languages, by contrast, have more similar tokenization behavior and stronger transfer scores.
+This is visible in both the tokenization analysis and the transfer matrices. The Romance languages have similar tokenization behavior and strong mutual transfer. Arabic has heavier segmentation, a larger composite label inventory, and weaker cross-lingual transfer.
 
 ---
 

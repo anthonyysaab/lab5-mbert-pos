@@ -56,7 +56,7 @@ ul.task-list li input[type="checkbox"] {
 <section id="introduction" class="level2">
 <h2 class="anchored" data-anchor-id="introduction">1. Introduction</h2>
 <p>This lab investigates how multilingual BERT (<code>bert-base-multilingual-cased</code>) behaves on part-of-speech tagging across several languages. The experiment fine-tunes mBERT on Universal Dependencies treebanks and evaluates both same-language performance and cross-lingual transfer.</p>
-<p>The five selected languages are:</p>
+<p>The five selected languages for the multilingual experiment are:</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -88,94 +88,198 @@ ul.task-list li input[type="checkbox"] {
 </tbody>
 </table>
 <p>This selection includes one Semitic language, English, and three Romance languages. It therefore allows us to test whether cross-lingual transfer is stronger between typologically and genealogically closer languages.</p>
+<p>Before the multilingual experiment, I also analyzed the French Sequoia test set. Sequoia is used as a warm-up corpus in the assignment because it illustrates several Universal Dependencies issues: label distribution, multiword tokens, tokens containing spaces, and the mismatch between UD tokenization and mBERT WordPiece tokenization.</p>
+<hr>
+</section>
+<section id="sequoia-warm-up-analysis" class="level2">
+<h2 class="anchored" data-anchor-id="sequoia-warm-up-analysis">2. Sequoia warm-up analysis</h2>
+<p>The French Sequoia test set contains 456 sentences. With standard UD counting, where only normal integer-indexed syntactic tokens are counted, the file contains 15 UPOS labels. The most frequent labels are:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>UPOS</th>
+<th style="text-align: right;">Count</th>
+<th style="text-align: right;">Percentage</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>NOUN</td>
+<td style="text-align: right;">2125</td>
+<td style="text-align: right;">21.1569</td>
+</tr>
+<tr class="even">
+<td>ADP</td>
+<td style="text-align: right;">1630</td>
+<td style="text-align: right;">16.2286</td>
+</tr>
+<tr class="odd">
+<td>DET</td>
+<td style="text-align: right;">1486</td>
+<td style="text-align: right;">14.7949</td>
+</tr>
+<tr class="even">
+<td>PUNCT</td>
+<td style="text-align: right;">1084</td>
+<td style="text-align: right;">10.7925</td>
+</tr>
+<tr class="odd">
+<td>VERB</td>
+<td style="text-align: right;">781</td>
+<td style="text-align: right;">7.7758</td>
+</tr>
+<tr class="even">
+<td>ADJ</td>
+<td style="text-align: right;">636</td>
+<td style="text-align: right;">6.3321</td>
+</tr>
+<tr class="odd">
+<td>PROPN</td>
+<td style="text-align: right;">480</td>
+<td style="text-align: right;">4.7790</td>
+</tr>
+<tr class="even">
+<td>ADV</td>
+<td style="text-align: right;">417</td>
+<td style="text-align: right;">4.1517</td>
+</tr>
+<tr class="odd">
+<td>PRON</td>
+<td style="text-align: right;">398</td>
+<td style="text-align: right;">3.9626</td>
+</tr>
+<tr class="even">
+<td>AUX</td>
+<td style="text-align: right;">345</td>
+<td style="text-align: right;">3.4349</td>
+</tr>
+</tbody>
+</table>
+<p>The distribution is clearly imbalanced. Nominal and functional categories such as <code>NOUN</code>, <code>ADP</code>, and <code>DET</code> dominate the corpus, while other categories occur much less often. This matters for evaluation: accuracy can be high because the model predicts frequent classes well, while macro-F1 is more sensitive to rare labels.</p>
+<p>The Sequoia test set contains 310 multiword tokens. Most of them are French contractions such as <code>des</code>, <code>du</code>, <code>au</code>, <code>Aux</code>, and <code>desdites</code>. In UD, these are represented as one surface token plus separate grammatical components:</p>
+<pre class="text"><code>des      = de + les       -&gt; ADP+DET
+du       = de + le        -&gt; ADP+DET
+Aux      = À + les        -&gt; ADP+DET
+au       = à + le         -&gt; ADP+DET
+desdites = de + lesdites  -&gt; ADP+DET</code></pre>
+<p>For this lab, I kept the surface token and assigned it a concatenated label such as <code>ADP+DET</code>. This preserves the surface form seen by mBERT while still encoding the grammatical analysis given by UD.</p>
+<p>The Sequoia test set also contains 13 tokens whose form contains spaces. Since the assignment states that such spaces should be removed, the loader normalizes token forms by deleting internal whitespace before tokenization.</p>
+<p>For the sentence:</p>
+<pre class="text"><code>Pouvez-vous donner les mêmes garanties au sein de l'Union Européenne</code></pre>
+<p>UD tokenization and mBERT tokenization differ. A UD-style grammatical tokenization is:</p>
+<pre class="text"><code>Pouvez - vous donner les mêmes garanties au sein de l' Union Européenne</code></pre>
+<p>with labels such as:</p>
+<pre class="text"><code>Pouvez      -&gt; VERB
+-           -&gt; PUNCT
+vous        -&gt; PRON
+garanties   -&gt; NOUN
+au          -&gt; ADP+DET
+Européenne  -&gt; PROPN</code></pre>
+<p>mBERT uses WordPiece subword tokenization:</p>
+<pre class="text"><code>Po ##uve ##z - vous donner les mêmes gara ##nties au sein de l ' Union Euro ##pée ##nne</code></pre>
+<p>This creates a label-alignment problem: UD gives one POS label per UD token, but mBERT may split one token into several subtokens. The solution is to assign the POS label only to the first subtoken and assign <code>&lt;pad&gt;</code> / <code>-100</code> to continuation subtokens and special tokens:</p>
+<pre class="text"><code>Po       -&gt; VERB
+##uve    -&gt; &lt;pad&gt;
+##z      -&gt; &lt;pad&gt;
+
+gara     -&gt; NOUN
+##nties  -&gt; &lt;pad&gt;
+
+Euro     -&gt; PROPN
+##pée    -&gt; &lt;pad&gt;
+##nne    -&gt; &lt;pad&gt;</code></pre>
+<p>This ensures that training loss and evaluation metrics are computed only on real UD-token positions, not on artificial WordPiece fragments.</p>
 <hr>
 </section>
 <section id="universal-dependencies-data" class="level2">
-<h2 class="anchored" data-anchor-id="universal-dependencies-data">2. Universal Dependencies data</h2>
-<p>The data comes from Universal Dependencies <code>.conllu</code> files. Each <code>.conllu</code> file contains sentences annotated with linguistic information such as token form, lemma, UPOS tag, XPOS tag, morphological features, dependency head, and dependency relation.</p>
+<h2 class="anchored" data-anchor-id="universal-dependencies-data">3. Universal Dependencies data</h2>
+<p>The main multilingual data comes from Universal Dependencies <code>.conllu</code> files. Each <code>.conllu</code> file contains sentences annotated with linguistic information such as token form, lemma, UPOS tag, XPOS tag, morphological features, dependency head, and dependency relation.</p>
 <p>For this lab, I extracted:</p>
 <pre class="text"><code>FORM  → word/token surface form
 UPOS  → universal part-of-speech label</code></pre>
-<p>Multiword-token range lines and empty nodes were ignored. I kept only normal integer-indexed tokens, because the task is word-level UPOS tagging.</p>
-<p>The shared UPOS inventory contains 17 labels:</p>
+<p>Empty nodes were ignored. Multiword-token range lines were handled specially: the surface token was kept, and the UPOS labels of its components were concatenated. For example, a French contraction such as <code>au</code>, whose components are <code>à</code> and <code>le</code>, is represented as:</p>
+<pre class="text"><code>au -&gt; ADP+DET</code></pre>
+<p>This gives mBERT the surface token that actually appears in the text while preserving the grammatical information from the UD annotation.</p>
+<p>The ordinary UPOS inventory contains 17 universal labels:</p>
 <pre class="text"><code>ADJ, ADP, ADV, AUX, CCONJ, DET, INTJ, NOUN, NUM, PART, PRON, PROPN, PUNCT, SCONJ, SYM, VERB, X</code></pre>
-<p>Some splits contain fewer than 17 labels. This does not mean the annotation scheme changes. It only means that rare categories such as <code>INTJ</code>, <code>SYM</code>, or <code>PART</code> do not appear in every dev/test split.</p>
+<p>After multiword-token normalization, the project label vocabulary also includes composite labels such as <code>ADP+DET</code>, <code>VERB+PRON</code>, or <code>AUX+PART</code>. These composite labels are not new UPOS categories; they encode the grammatical composition of a single surface token.</p>
 <hr>
 </section>
 <section id="corpus-statistics" class="level2">
-<h2 class="anchored" data-anchor-id="corpus-statistics">3. Corpus statistics</h2>
+<h2 class="anchored" data-anchor-id="corpus-statistics">4. Corpus statistics</h2>
 <p>The corpus statistics were saved in:</p>
 <pre class="text"><code>outputs/corpus_stats.csv
 outputs/upos_distribution.csv</code></pre>
-<p>Summary of the main training sets:</p>
+<p>Summary of the main training sets after multiword-token normalization:</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
 <th>Language</th>
 <th style="text-align: right;">Train sentences</th>
 <th style="text-align: right;">Train tokens</th>
-<th style="text-align: right;">UPOS labels</th>
+<th style="text-align: right;">Label count</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td>Arabic PADT</td>
 <td style="text-align: right;">6,075</td>
-<td style="text-align: right;">223,881</td>
-<td style="text-align: right;">17</td>
+<td style="text-align: right;">191,869</td>
+<td style="text-align: right;">111</td>
 </tr>
 <tr class="even">
 <td>English EWT</td>
 <td style="text-align: right;">12,544</td>
-<td style="text-align: right;">204,578</td>
-<td style="text-align: right;">17</td>
+<td style="text-align: right;">201,963</td>
+<td style="text-align: right;">38</td>
 </tr>
 <tr class="odd">
 <td>Spanish GSD</td>
 <td style="text-align: right;">14,186</td>
-<td style="text-align: right;">382,327</td>
-<td style="text-align: right;">17</td>
+<td style="text-align: right;">375,031</td>
+<td style="text-align: right;">21</td>
 </tr>
 <tr class="even">
 <td>French GSD</td>
 <td style="text-align: right;">14,450</td>
-<td style="text-align: right;">354,647</td>
-<td style="text-align: right;">16</td>
+<td style="text-align: right;">344,961</td>
+<td style="text-align: right;">18</td>
 </tr>
 <tr class="odd">
 <td>Italian ISDT</td>
 <td style="text-align: right;">13,121</td>
-<td style="text-align: right;">276,014</td>
-<td style="text-align: right;">17</td>
+<td style="text-align: right;">257,612</td>
+<td style="text-align: right;">25</td>
 </tr>
 </tbody>
 </table>
-<p>The most frequent labels across the treebanks are generally <code>NOUN</code>, <code>ADP</code>, <code>DET</code>, <code>PUNCT</code>, and <code>VERB</code>. This creates a class imbalance: accuracy can be high because frequent labels dominate, while macro-F1 is more sensitive to rare labels.</p>
+<p>The label count is larger than 17 for some languages because multiword tokens can produce composite labels. Arabic has the largest label inventory because its treebank contains many cliticized forms and morphologically complex surface tokens.</p>
+<p>The most frequent labels across the treebanks are generally <code>NOUN</code>, <code>ADP</code>, <code>DET</code>, <code>PUNCT</code>, and <code>VERB</code>. This creates a class imbalance: accuracy can be high because frequent labels dominate, while macro-F1 is more sensitive to rare labels and composite labels.</p>
 <hr>
 </section>
 <section id="ud-tokenization-vs-mbert-tokenization" class="level2">
-<h2 class="anchored" data-anchor-id="ud-tokenization-vs-mbert-tokenization">4. UD tokenization vs mBERT tokenization</h2>
-<p>UD tokenization is word-level: each word has one UPOS label.</p>
-<p>mBERT uses WordPiece tokenization. One UD word may become one or several subtokens. This creates the central preprocessing problem of the lab:</p>
-<pre class="text"><code>UD word-level labels must be aligned with mBERT subword-level input.</code></pre>
+<h2 class="anchored" data-anchor-id="ud-tokenization-vs-mbert-tokenization">5. UD tokenization vs mBERT tokenization</h2>
+<p>UD tokenization is word-level or grammatical-token-level: each UD token receives one label.</p>
+<p>mBERT uses WordPiece tokenization. One UD token may become one or several subtokens. This creates the central preprocessing problem of the lab:</p>
+<pre class="text"><code>UD token-level labels must be aligned with mBERT subword-level input.</code></pre>
 <p>The alignment rule used was:</p>
-<pre class="text"><code>First subtoken of a word       → receives the UPOS label
-Continuation subtokens         → receive -100
-Special tokens / padding       → receive -100</code></pre>
+<pre class="text"><code>First subtoken of a UD token     → receives the POS label
+Continuation subtokens           → receive -100
+Special tokens / padding         → receive -100</code></pre>
 <p>The value <code>-100</code> is ignored by PyTorch/HuggingFace during loss computation.</p>
 <p>Example:</p>
-<pre class="text"><code>word:      unbelievable
-subtokens: un ##bel ##ievable
-labels:    ADJ -100 -100</code></pre>
-<p>This means the model only learns from the first subtoken of each UD word.</p>
+<pre class="text"><code>word:      garanties
+subtokens: gara ##nties
+labels:    NOUN -100</code></pre>
+<p>This means the model only learns from the first subtoken of each UD token. Continuation subtokens are still part of the input representation, but they do not contribute directly to the loss or evaluation metrics.</p>
 <hr>
 </section>
 <section id="tokenization-analysis" class="level2">
-<h2 class="anchored" data-anchor-id="tokenization-analysis">5. Tokenization analysis</h2>
+<h2 class="anchored" data-anchor-id="tokenization-analysis">6. Tokenization analysis</h2>
 <p>The tokenization analysis was saved in:</p>
 <pre class="text"><code>outputs/tokenization_stats.csv
 outputs/tokenization_examples.txt</code></pre>
-<p>Important observations:</p>
+<p>Important observations after multiword-token normalization:</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -187,36 +291,37 @@ outputs/tokenization_examples.txt</code></pre>
 <tbody>
 <tr class="odd">
 <td>Arabic PADT</td>
-<td style="text-align: right;">~1.76</td>
-<td style="text-align: right;">~40%</td>
+<td style="text-align: right;">~1.97–2.02</td>
+<td style="text-align: right;">~50–51%</td>
 </tr>
 <tr class="even">
 <td>English EWT</td>
-<td style="text-align: right;">~1.22–1.31</td>
+<td style="text-align: right;">~1.24–1.32</td>
 <td style="text-align: right;">~13–15%</td>
 </tr>
 <tr class="odd">
 <td>Spanish GSD</td>
-<td style="text-align: right;">~1.25–1.27</td>
-<td style="text-align: right;">~16–17%</td>
+<td style="text-align: right;">~1.26–1.28</td>
+<td style="text-align: right;">~17–18%</td>
 </tr>
 <tr class="even">
 <td>French GSD</td>
-<td style="text-align: right;">~1.31</td>
-<td style="text-align: right;">~21%</td>
+<td style="text-align: right;">~1.32–1.33</td>
+<td style="text-align: right;">~21–22%</td>
 </tr>
 <tr class="odd">
 <td>Italian ISDT</td>
-<td style="text-align: right;">~1.33</td>
-<td style="text-align: right;">~22–23%</td>
+<td style="text-align: right;">~1.36</td>
+<td style="text-align: right;">~24–25%</td>
 </tr>
 </tbody>
 </table>
-<p>Arabic is split much more heavily by mBERT than the European languages. This matters because heavier segmentation increases the mismatch between the linguistic word-level annotation and the model’s subword input representation.</p>
+<p>Arabic is split much more heavily by mBERT than the European languages. This matters because heavier segmentation increases the mismatch between the linguistic token-level annotation and the model’s subword input representation.</p>
+<p>The Romance languages show similar behavior, with French and Italian having slightly higher split rates than Spanish. English has the lowest split rate among the European treebanks. These differences are relevant to cross-lingual transfer because mBERT does not represent all languages with the same degree of tokenization compatibility.</p>
 <hr>
 </section>
 <section id="dataset-creation" class="level2">
-<h2 class="anchored" data-anchor-id="dataset-creation">6. Dataset creation</h2>
+<h2 class="anchored" data-anchor-id="dataset-creation">7. Dataset creation</h2>
 <p>The processed HuggingFace datasets contain:</p>
 <pre class="text"><code>input_ids
 attention_mask
@@ -225,14 +330,14 @@ labels</code></pre>
 <pre class="text"><code>data/processed/hf_pos/</code></pre>
 <p>The shared label vocabulary was saved as:</p>
 <pre class="text"><code>outputs/label_vocab.json</code></pre>
-<p>All sequences were padded/truncated to length 128. This avoids overly long examples and keeps training feasible on the available GPU.</p>
+<p>All sequences were padded/truncated to length 128. This avoids overly long examples and keeps training feasible on the available GPU. Truncation means that if a sentence produces more than 128 WordPiece tokens, only the first 128 positions are kept. This is a practical compromise: it makes training cheaper, but a small amount of sentence-final material may be lost for very long examples.</p>
 <hr>
 </section>
 <section id="model-and-training-setup" class="level2">
-<h2 class="anchored" data-anchor-id="model-and-training-setup">7. Model and training setup</h2>
+<h2 class="anchored" data-anchor-id="model-and-training-setup">8. Model and training setup</h2>
 <p>The model used was:</p>
 <pre class="text"><code>bert-base-multilingual-cased</code></pre>
-<p>For each language, I loaded mBERT as a token-classification model with 17 UPOS labels.</p>
+<p>For each language, I loaded mBERT as a token-classification model. The classifier head was initialized for the project’s POS label vocabulary.</p>
 <p>Reduced experimental setup:</p>
 <table class="caption-top table">
 <thead>
@@ -277,7 +382,7 @@ labels</code></pre>
 <hr>
 </section>
 <section id="same-language-validation-results" class="level2">
-<h2 class="anchored" data-anchor-id="same-language-validation-results">8. Same-language validation results</h2>
+<h2 class="anchored" data-anchor-id="same-language-validation-results">9. Same-language validation results</h2>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -289,42 +394,44 @@ labels</code></pre>
 <tbody>
 <tr class="odd">
 <td>Arabic PADT</td>
-<td style="text-align: right;">0.9416</td>
-<td style="text-align: right;">0.7891</td>
+<td style="text-align: right;">0.8640</td>
+<td style="text-align: right;">0.1859</td>
 </tr>
 <tr class="even">
 <td>English EWT</td>
-<td style="text-align: right;">0.9237</td>
-<td style="text-align: right;">0.7619</td>
+<td style="text-align: right;">0.9043</td>
+<td style="text-align: right;">0.5016</td>
 </tr>
 <tr class="odd">
 <td>Spanish GSD</td>
-<td style="text-align: right;">0.9548</td>
-<td style="text-align: right;">0.7706</td>
+<td style="text-align: right;">0.9512</td>
+<td style="text-align: right;">0.7042</td>
 </tr>
 <tr class="even">
 <td>French GSD</td>
-<td style="text-align: right;">0.9694</td>
-<td style="text-align: right;">0.7918</td>
+<td style="text-align: right;">0.9643</td>
+<td style="text-align: right;">0.7530</td>
 </tr>
 <tr class="odd">
 <td>Italian ISDT</td>
-<td style="text-align: right;">0.9675</td>
-<td style="text-align: right;">0.7279</td>
+<td style="text-align: right;">0.9572</td>
+<td style="text-align: right;">0.6978</td>
 </tr>
 </tbody>
 </table>
-<p>These results show that the model successfully learns POS tagging from each treebank, even with a reduced training setup.</p>
+<p>These results show that the model successfully learns POS tagging from each treebank, even with a reduced training setup of 2,000 training examples and 300 optimization steps per language.</p>
+<p>Accuracy remains high for all five languages, but macro-F1 is much lower, especially for Arabic. This is expected after multiword-token normalization, because the label vocabulary now contains many rare composite labels such as <code>ADP+DET</code>, <code>VERB+PRON</code>, or longer Arabic clitic combinations. Accuracy is dominated by frequent labels, while macro-F1 gives equal weight to every label, including rare and difficult composite labels.</p>
 <hr>
 </section>
 <section id="cross-lingual-transfer-experiment" class="level2">
-<h2 class="anchored" data-anchor-id="cross-lingual-transfer-experiment">9. Cross-lingual transfer experiment</h2>
+<h2 class="anchored" data-anchor-id="cross-lingual-transfer-experiment">10. Cross-lingual transfer experiment</h2>
 <p>Each model was trained on one language and evaluated on the test sets of all five languages. This gives a 5 × 5 multilingual transfer matrix.</p>
 <p>Rows represent the training language. Columns represent the test language.</p>
+<p>This setup directly tests whether mBERT’s learned POS representations transfer across languages. If mBERT is strongly multilingual, a model trained on one language should still perform well on other languages. If transfer depends heavily on language similarity, then related languages should transfer better than distant languages.</p>
 <hr>
 </section>
 <section id="accuracy-matrix" class="level2">
-<h2 class="anchored" data-anchor-id="accuracy-matrix">10. Accuracy matrix</h2>
+<h2 class="anchored" data-anchor-id="accuracy-matrix">11. Accuracy matrix</h2>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -339,43 +446,43 @@ labels</code></pre>
 <tbody>
 <tr class="odd">
 <td>ar_padt</td>
-<td style="text-align: right;">0.9428</td>
-<td style="text-align: right;">0.5441</td>
-<td style="text-align: right;">0.6000</td>
-<td style="text-align: right;">0.5962</td>
-<td style="text-align: right;">0.6102</td>
+<td style="text-align: right;">0.8651</td>
+<td style="text-align: right;">0.4786</td>
+<td style="text-align: right;">0.5797</td>
+<td style="text-align: right;">0.5543</td>
+<td style="text-align: right;">0.5580</td>
 </tr>
 <tr class="even">
 <td>en_ewt</td>
-<td style="text-align: right;">0.5541</td>
-<td style="text-align: right;">0.9257</td>
-<td style="text-align: right;">0.8594</td>
-<td style="text-align: right;">0.8781</td>
-<td style="text-align: right;">0.9082</td>
+<td style="text-align: right;">0.4030</td>
+<td style="text-align: right;">0.9055</td>
+<td style="text-align: right;">0.8317</td>
+<td style="text-align: right;">0.8406</td>
+<td style="text-align: right;">0.8241</td>
 </tr>
 <tr class="odd">
 <td>es_gsd</td>
-<td style="text-align: right;">0.6495</td>
-<td style="text-align: right;">0.8219</td>
-<td style="text-align: right;">0.9498</td>
-<td style="text-align: right;">0.9335</td>
-<td style="text-align: right;">0.9468</td>
+<td style="text-align: right;">0.5279</td>
+<td style="text-align: right;">0.8268</td>
+<td style="text-align: right;">0.9472</td>
+<td style="text-align: right;">0.9281</td>
+<td style="text-align: right;">0.9164</td>
 </tr>
 <tr class="even">
 <td>fr_gsd</td>
-<td style="text-align: right;">0.6820</td>
-<td style="text-align: right;">0.8177</td>
-<td style="text-align: right;">0.9148</td>
-<td style="text-align: right;">0.9619</td>
-<td style="text-align: right;">0.9453</td>
+<td style="text-align: right;">0.5291</td>
+<td style="text-align: right;">0.8192</td>
+<td style="text-align: right;">0.9023</td>
+<td style="text-align: right;">0.9566</td>
+<td style="text-align: right;">0.9281</td>
 </tr>
 <tr class="odd">
 <td>it_isdt</td>
-<td style="text-align: right;">0.6668</td>
-<td style="text-align: right;">0.8337</td>
-<td style="text-align: right;">0.9210</td>
-<td style="text-align: right;">0.9387</td>
-<td style="text-align: right;">0.9673</td>
+<td style="text-align: right;">0.5456</td>
+<td style="text-align: right;">0.8424</td>
+<td style="text-align: right;">0.9119</td>
+<td style="text-align: right;">0.9327</td>
+<td style="text-align: right;">0.9611</td>
 </tr>
 </tbody>
 </table>
@@ -388,7 +495,7 @@ labels</code></pre>
 <hr>
 </section>
 <section id="macro-f1-matrix" class="level2">
-<h2 class="anchored" data-anchor-id="macro-f1-matrix">11. Macro-F1 matrix</h2>
+<h2 class="anchored" data-anchor-id="macro-f1-matrix">12. Macro-F1 matrix</h2>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -403,43 +510,43 @@ labels</code></pre>
 <tbody>
 <tr class="odd">
 <td>ar_padt</td>
-<td style="text-align: right;">0.8220</td>
-<td style="text-align: right;">0.3903</td>
-<td style="text-align: right;">0.4008</td>
-<td style="text-align: right;">0.4266</td>
-<td style="text-align: right;">0.4576</td>
+<td style="text-align: right;">0.1815</td>
+<td style="text-align: right;">0.1449</td>
+<td style="text-align: right;">0.2348</td>
+<td style="text-align: right;">0.2423</td>
+<td style="text-align: right;">0.1841</td>
 </tr>
 <tr class="even">
 <td>en_ewt</td>
-<td style="text-align: right;">0.3987</td>
-<td style="text-align: right;">0.7579</td>
-<td style="text-align: right;">0.6162</td>
-<td style="text-align: right;">0.6543</td>
-<td style="text-align: right;">0.7161</td>
+<td style="text-align: right;">0.0648</td>
+<td style="text-align: right;">0.4509</td>
+<td style="text-align: right;">0.5386</td>
+<td style="text-align: right;">0.6080</td>
+<td style="text-align: right;">0.4743</td>
 </tr>
 <tr class="odd">
 <td>es_gsd</td>
-<td style="text-align: right;">0.4951</td>
-<td style="text-align: right;">0.6417</td>
-<td style="text-align: right;">0.7639</td>
-<td style="text-align: right;">0.7732</td>
-<td style="text-align: right;">0.8255</td>
+<td style="text-align: right;">0.0908</td>
+<td style="text-align: right;">0.3902</td>
+<td style="text-align: right;">0.7348</td>
+<td style="text-align: right;">0.7838</td>
+<td style="text-align: right;">0.6105</td>
 </tr>
 <tr class="even">
 <td>fr_gsd</td>
-<td style="text-align: right;">0.4753</td>
-<td style="text-align: right;">0.6224</td>
-<td style="text-align: right;">0.6589</td>
-<td style="text-align: right;">0.7747</td>
-<td style="text-align: right;">0.7914</td>
+<td style="text-align: right;">0.0713</td>
+<td style="text-align: right;">0.3613</td>
+<td style="text-align: right;">0.6220</td>
+<td style="text-align: right;">0.7814</td>
+<td style="text-align: right;">0.5672</td>
 </tr>
 <tr class="odd">
 <td>it_isdt</td>
-<td style="text-align: right;">0.4600</td>
-<td style="text-align: right;">0.6351</td>
-<td style="text-align: right;">0.6685</td>
-<td style="text-align: right;">0.7464</td>
-<td style="text-align: right;">0.8239</td>
+<td style="text-align: right;">0.0811</td>
+<td style="text-align: right;">0.3902</td>
+<td style="text-align: right;">0.6427</td>
+<td style="text-align: right;">0.7577</td>
+<td style="text-align: right;">0.6067</td>
 </tr>
 </tbody>
 </table>
@@ -452,44 +559,50 @@ labels</code></pre>
 <hr>
 </section>
 <section id="interpretation-of-the-results" class="level2">
-<h2 class="anchored" data-anchor-id="interpretation-of-the-results">12. Interpretation of the results</h2>
-<p>The strongest scores are on the diagonal. This means that training and testing on the same language gives the best performance. This is expected because the model sees the same treebank conventions, vocabulary distribution, morphology, and syntax during training.</p>
-<p>The Romance languages transfer very well to one another. Spanish, French, and Italian produce high cross-lingual accuracy scores:</p>
-<pre class="text"><code>Spanish → French:  0.9335
-Spanish → Italian: 0.9468
-French → Italian:  0.9453
-Italian → French:  0.9387</code></pre>
+<h2 class="anchored" data-anchor-id="interpretation-of-the-results">13. Interpretation of the results</h2>
+<p>The strongest scores are on the diagonal. This means that training and testing on the same language gives the best performance. This is expected because the model sees the same treebank conventions, vocabulary distribution, morphology, tokenization behavior, and syntax during training.</p>
+<p>The Romance languages transfer well to one another. Spanish, French, and Italian produce strong cross-lingual accuracy scores:</p>
+<pre class="text"><code>Spanish → French:  0.9281
+Spanish → Italian: 0.9164
+French → Spanish:  0.9023
+French → Italian:  0.9281
+Italian → Spanish: 0.9119
+Italian → French:  0.9327</code></pre>
 <p>This supports the idea that mBERT has shared multilingual representations that are especially useful when languages are typologically and genealogically close.</p>
 <p>English transfers reasonably well to the Romance languages:</p>
-<pre class="text"><code>English → Spanish: 0.8594
-English → French:  0.8781
-English → Italian: 0.9082</code></pre>
+<pre class="text"><code>English → Spanish: 0.8317
+English → French:  0.8406
+English → Italian: 0.8241</code></pre>
 <p>However, English transfers much less well to Arabic:</p>
-<pre class="text"><code>English → Arabic: 0.5541</code></pre>
-<p>Arabic is the weakest cross-lingual target overall. This is probably caused by several factors: different script, richer morphology, different subword segmentation behavior, and greater typological distance from the other selected languages.</p>
-<p>Macro-F1 is lower than accuracy. This is because POS labels are imbalanced. Common tags such as <code>NOUN</code>, <code>ADP</code>, <code>DET</code>, <code>VERB</code>, and <code>PUNCT</code> dominate accuracy, while rare labels such as <code>INTJ</code>, <code>SYM</code>, <code>PART</code>, and <code>X</code> affect macro-F1 more strongly.</p>
+<pre class="text"><code>English → Arabic: 0.4030</code></pre>
+<p>Arabic is the weakest cross-lingual target overall. The highest non-Arabic-to-Arabic accuracy is only around 0.5456, from Italian to Arabic. This is probably caused by several factors: different script, richer morphology, heavier subword segmentation, many composite clitic labels, and greater typological distance from the European languages.</p>
+<p>Macro-F1 is much lower than accuracy, especially for Arabic and for cross-lingual transfer into Arabic. This does not mean that the model is only guessing. Rather, it shows that many rare labels are not handled well. With multiword-token normalization, the task becomes harder because the model must predict not only ordinary UPOS labels but also composite labels such as <code>ADP+DET</code>, <code>VERB+PRON</code>, and language-specific clitic combinations. Accuracy rewards correct predictions on frequent labels, while macro-F1 penalizes failure on rare labels.</p>
+<p>The clean result is therefore more realistic than the first version of the experiment: it keeps the UD multiword-token information, but this makes the classification problem harder and exposes the limits of cross-lingual transfer more clearly.</p>
 <hr>
 </section>
 <section id="is-mbert-multilingual" class="level2">
-<h2 class="anchored" data-anchor-id="is-mbert-multilingual">13. Is mBERT multilingual?</h2>
+<h2 class="anchored" data-anchor-id="is-mbert-multilingual">14. Is mBERT multilingual?</h2>
 <p>The answer is yes, but with limits.</p>
-<p>mBERT is multilingual because a model trained on one language can still perform above random baseline on other languages. The transfer is especially strong between related languages, such as Spanish, French, and Italian.</p>
-<p>However, mBERT is not equally multilingual for all language pairs. Transfer performance decreases when the target language is more distant in script, morphology, tokenization behavior, and syntactic distribution.</p>
+<p>mBERT is multilingual because a model trained on one language can still transfer useful POS information to another language. This is clearest among the Romance languages, where Spanish, French, and Italian transfer strongly to one another. English also transfers moderately well to the Romance languages.</p>
+<p>However, mBERT is not equally multilingual for all language pairs. Transfer performance decreases when the target language differs strongly in script, morphology, tokenization behavior, and label distribution. Arabic is the clearest example: it has much heavier WordPiece segmentation and many more composite labels after multiword-token normalization, and it receives weaker transfer from the European-language models.</p>
 <p>The results therefore support a nuanced conclusion:</p>
-<pre class="text"><code>mBERT learns shared multilingual representations, but transfer quality depends strongly on linguistic distance and tokenization compatibility.</code></pre>
+<pre class="text"><code>mBERT learns shared multilingual representations, but transfer quality depends strongly on linguistic distance, tokenizer compatibility, and annotation-label compatibility.</code></pre>
+<p>This is visible in both the tokenization analysis and the transfer matrices. The Romance languages have similar tokenization behavior and strong mutual transfer. Arabic has heavier segmentation, a larger composite label inventory, and weaker cross-lingual transfer.</p>
 <hr>
 </section>
 <section id="conclusion" class="level2">
-<h2 class="anchored" data-anchor-id="conclusion">14. Conclusion</h2>
+<h2 class="anchored" data-anchor-id="conclusion">15. Conclusion</h2>
 <p>This lab implemented a full POS-tagging pipeline with multilingual BERT:</p>
 <pre class="text"><code>.conllu files
-→ UD words and UPOS labels
+→ UD tokens and UPOS labels
+→ multiword-token normalization
 → mBERT WordPiece tokenization
 → label alignment
 → HuggingFace Dataset creation
 → mBERT fine-tuning
 → same-language and cross-lingual evaluation</code></pre>
-<p>The experiment shows that mBERT can transfer POS-tagging knowledge across languages, especially between related Romance languages. The model performs best in same-language evaluation, but cross-lingual transfer remains strong when the source and target languages are close.</p>
+<p>The Sequoia warm-up analysis showed why tokenization is a central issue in this lab. UD may represent French contractions such as <code>au</code>, <code>du</code>, and <code>des</code> as multiword tokens with grammatical components like <code>ADP+DET</code>, while mBERT may further split surface tokens into WordPiece subtokens. This requires an explicit alignment strategy: keep the label on the first subtoken and ignore continuation subtokens with <code>-100</code>.</p>
+<p>The multilingual experiment shows that mBERT can transfer POS-tagging knowledge across languages, especially between related Romance languages. The model performs best in same-language evaluation, but cross-lingual transfer remains strong when the source and target languages are close.</p>
 <p>Arabic behaves differently from the European languages. It has heavier mBERT subword segmentation and weaker transfer results, suggesting that multilinguality is affected by script, morphology, and tokenizer coverage.</p>
 <p>Overall, mBERT is multilingual, but its multilinguality is structured rather than uniform.</p>
 </section>
